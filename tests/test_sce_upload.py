@@ -217,7 +217,7 @@ class Release(unittest.TestCase):
         import re
         infer = open(os.path.join(self.ROOT, "sce_infer.py"), encoding="utf-8").read()
         self.assertEqual(re.search(r'^VERSION = "([^"]+)"', infer, re.M).group(1), up.TOOL_VERSION)
-        self.assertEqual(up.TOOL_VERSION, "1.0.3")
+        self.assertEqual(up.TOOL_VERSION, "1.0.4")
 
 
 class Cli(unittest.TestCase):
@@ -312,7 +312,7 @@ class AgainstTheRealApi(unittest.TestCase):
             code = up.main([b1, b8, "--baseline", b1, "--consent", "--endpoint", self.start()])
         text = out.getvalue()
         self.assertEqual(code, 0, text)
-        self.assertIn("INDICATIVE ONLY", text)
+        self.assertIn("INDICATIVE - GPU THROTTLED", text)
         self.assertIn("Best measured alternative", text)
         self.assertIn("Measured as it was: 50 to 300 tokens/s", text)
         self.assertIn("Throttling: up to 66.7 %", text)

@@ -6,7 +6,7 @@ import argparse, atexit, csv, hashlib, json, math, os, platform, shutil, socket,
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 
 def percentile(xs, q, minimum_n=1):
     ys = sorted(xs)

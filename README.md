@@ -22,7 +22,7 @@ The exact definitions, the measurement boundary and the limits are in [SPECIFICA
 
 ## Verified and not verified
 
-Verified on real result archives on 6 October 2026: one NVIDIA Tesla T4 on Google Colab, `Qwen/Qwen2.5-1.5B-Instruct`, batch sizes 1, 8 and 32, 20 repeats each, energy from the NVML counter (energy check passed in every run). The T4 reduced its clock speed in all runs (driver reason: power cap); the collector reports this openly. The measurement code of releases 1.0.0 to 1.0.3 is identical to the version used for that verification.
+Verified on real result archives on 6 October 2026: one NVIDIA Tesla T4 on Google Colab, `Qwen/Qwen2.5-1.5B-Instruct`, batch sizes 1, 8 and 32, 20 repeats each, energy from the NVML counter (energy check passed in every run). The T4 reduced its clock speed in all runs (driver reason: power cap); the collector reports this openly. The measurement code of releases 1.0.0 to 1.0.4 is identical to the version used for that verification.
 
 Not verified: other GPUs, other models, other serving systems, multi-GPU setups and non-NVIDIA hardware. The vLLM variant (`sce_infer_vllm.py`) is experimental and not verified.
 

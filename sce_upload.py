@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SCETES upload tool 1.0.3: send collector results to SCETES, only with your explicit consent.
+"""SCETES upload tool 1.0.4: send collector results to SCETES, only with your explicit consent.
 
 sce_infer.py measures and writes a local ZIP; it never uploads anything. This separate, optional tool reads one or more of
 those ZIP files, shows you EXACTLY what would be sent, and sends it only after you agree. Prompts, model outputs and your
@@ -17,7 +17,7 @@ import argparse, csv, hashlib, io, json, re, sys, zipfile
 from typing import Optional
 from urllib import error, parse, request
 
-TOOL_VERSION = "1.0.3"
+TOOL_VERSION = "1.0.4"
 SCHEMA_VERSION = 1
 CONSENT_VERSION = "2026-10-08"
 DEFAULT_ENDPOINT = "https://scetes.com/api/check"
@@ -376,8 +376,9 @@ def main(argv=None, stdin=None) -> int:
             print(f"Note: {note}.", file=sys.stderr)
         if any(r["quality"]["throttling_flagged"] for r in payload["runs"]):
             print("Note: at least one run is marked as throttled (the GPU lowered its clock speed or ran above 80 C) or its clocks were not recorded. "
-                  "Such runs are shown but not used for the comparison, so the result may contain no estimate. "
-                  "Repeat the measurement under controlled conditions if you need one.", file=sys.stderr)
+                  "Such runs never enter a verified comparison. If the difference is still clear (at least 20 % cheaper), the result shows "
+                  "an estimate labelled 'Indicative - GPU throttled'; otherwise it shows no estimate. "
+                  "Repeat the measurement under controlled conditions for a verified result.", file=sys.stderr)
         print("This is exactly what would be sent:\n" + json.dumps(payload, indent=2, ensure_ascii=False))
         if a.dry_run:
             print("\nDry run: nothing was sent.")
@@ -396,7 +397,7 @@ def main(argv=None, stdin=None) -> int:
         print(f"  (the same result as data: {parse.urljoin(endpoint, body['result_url'])})")
         if head.get("available"):
             if head.get("confidence") == "indicative":
-                print("INDICATIVE ONLY: the GPU was throttling while you measured, so treat this as a pointer, not a confirmed result. "
+                print("INDICATIVE - GPU THROTTLED: the GPU was throttling while you measured, so treat this as a pointer, not a confirmed result. "
                       "SCETES can confirm it under controlled conditions (Diagnostic).")
             print(f"Best measured alternative: run {head['best_run']}, cost ratio {head['cost_ratio']} of the baseline"
                   + (f", p95 latency ratio {head['p95_latency_ratio']}" if head.get("p95_latency_ratio") else "") + ".")
