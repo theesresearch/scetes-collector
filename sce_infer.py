@@ -2,11 +2,11 @@
 """SCE inference audit v1.0: local Hugging Face causal LLM measurement."""
 from __future__ import annotations
 
-import argparse, atexit, csv, hashlib, json, math, os, platform, shutil, socket, statistics, threading, time, uuid, zipfile
+import argparse, atexit, csv, hashlib, json, math, os, platform, shutil, socket, statistics, sys, threading, time, uuid, zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "1.0.4"
+VERSION = "1.0.5.dev0"
 
 def percentile(xs, q, minimum_n=1):
     ys = sorted(xs)
@@ -182,7 +182,77 @@ class GPU:
         try: self.nv.nvmlShutdown()
         except Exception: pass
 
-def main():
+PRIVACY_URL = "https://scetes.com/en/privacy/"
+
+
+def _field_paths(obj, prefix=""):
+    """Every field name in the upload payload, e.g. runs[].metrics.tokens_per_s, so the question lists exactly what is sent."""
+    if isinstance(obj, dict):
+        return [q for k, v in obj.items() for q in _field_paths(v, f"{prefix}.{k}" if prefix else k)]
+    if isinstance(obj, list):
+        return sorted({q for v in obj for q in _field_paths(v, prefix + "[]")}) if obj else [prefix + "[]"]
+    return [prefix]
+
+
+def after_run(archive_path, upload=None, dry_run=False, endpoint=None, stdin=None, out=None, interactive=None, post=None):
+    """End of a run: a short summary, then the optional upload of the summary numbers.
+
+    Never sends without a yes: the default answer is no, --no-upload skips the question, --dry-run prints the exact JSON and
+    sends nothing, and without a terminal (CI, pipes, notebooks without a TTY) nothing is ever sent, not even with --upload.
+    The payload is built by sce_upload.build_payload, so the fields are exactly those of the separate upload tool."""
+    import sce_upload as up  # standard library only; ships next to this file
+    out = out or sys.stdout
+    say = lambda *x: print(*x, file=out)
+    arch = up.read_archive(str(archive_path))
+    m = arch["metrics"]
+    flagged, checked = up.throttling_flagged(arch["telemetry"])
+    detail = up.throttling_detail(arch["telemetry"])
+    p95 = m.get("request_latency_p95_s")
+    say("\nSummary")
+    say(f"  Tokens per second (median):     {m['throughput_tokens_s_median']:.2f}")
+    say(f"  p95 batch latency:              {'%.3f s' % p95 if p95 is not None else 'not reported (needs at least 20 repeats)'}")
+    say(f"  GPU energy per output token:    {m['j_per_output_token_median']:.4f} J")
+    if not checked:
+        say("  Throttling:                     clocks not recorded")
+    elif detail:
+        say(f"  Throttling:                     {'yes' if flagged else 'no'}, {detail['reduced_clock_time_pct']} % of the time with a reduced clock")
+    else:
+        say(f"  Throttling:                     {'yes' if flagged else 'no'}")
+    say(f"  Local report:                   {os.path.abspath(archive_path)}")
+    if upload is False:
+        say("\nUpload: skipped (--no-upload). Nothing was sent.")
+        return 0
+    payload = up.build_payload([arch])
+    if dry_run:
+        say("\nThis is exactly what would be sent:\n" + json.dumps(payload, indent=2, ensure_ascii=False))
+        say("\nDry run: nothing was sent.")
+        return 0
+    if interactive is None:
+        interactive = sys.stdin.isatty() and sys.stdout.isatty()
+    if not interactive:
+        say("\nNo terminal: nothing was sent. To send the summary numbers later, run: python sce_upload.py " + str(archive_path))
+        return 0
+    say("\nOptional: send the summary numbers to SCETES and get a private link to your web report.")
+    say("These fields would be sent (prompts, model outputs, your computer's name and the GPU UUID never are):")
+    for f in _field_paths(payload):
+        say("  " + f)
+    say(f"How SCETES handles the data: {PRIVACY_URL}")
+    if upload is not True:
+        out.write("Send these measurements? [y/N] "); out.flush()
+        if (stdin or sys.stdin).readline().strip().lower() not in ("y", "yes"):
+            say("Nothing was sent.")
+            return 0
+    endpoint = up.check_endpoint(endpoint or up.DEFAULT_ENDPOINT)
+    status, body = (post or up.http)("POST", endpoint, payload)
+    if status != 201:
+        say(f"Not accepted ({status}): {(body or {}).get('error', 'unknown error')}. Your local report is unchanged.")
+        return 1
+    say("\nSent. Your web report (keep this link private; it is the only way to read or delete the result):")
+    say(f"  {up.page_link(endpoint, body['token'])}\n  stored until {body['expires_at']}")
+    return 0
+
+
+def build_parser():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--model", required=True, help="Hugging Face model id or local path")
     ap.add_argument("--prompt", required=True, help="Prompt text (kept in memory; never written to report)")
@@ -194,6 +264,17 @@ def main():
     ap.add_argument("--sample-period", type=float, default=0.02)
     ap.add_argument("--hostname", choices=["include", "hash", "omit"], default="hash")
     ap.add_argument("--output", default="sce_inference_v0_2.zip")
+    up_group = ap.add_mutually_exclusive_group()
+    up_group.add_argument("--upload", dest="upload", action="store_true", default=None,
+                          help="after the run, send the summary numbers without asking (still never without a terminal)")
+    up_group.add_argument("--no-upload", dest="upload", action="store_false", help="after the run, do not offer the upload")
+    ap.add_argument("--dry-run", action="store_true", help="after the run, print exactly what the upload would send; send nothing")
+    ap.add_argument("--endpoint", default=None, help=argparse.SUPPRESS)
+    return ap
+
+
+def main():
+    ap = build_parser()
     a = ap.parse_args()
     if min(a.output_tokens, a.batch_size, a.repeats, a.sample_period) <= 0 or a.warmup < 0: ap.error("Invalid measurement parameter")
 
@@ -315,5 +396,6 @@ def main():
     shutil.rmtree(outdir, ignore_errors=True)
     print("Created", Path(a.output).resolve())
     print(json.dumps(metric, indent=2))
+    return after_run(a.output, upload=a.upload, dry_run=a.dry_run, endpoint=a.endpoint)
 
-if __name__ == "__main__": main()
+if __name__ == "__main__": sys.exit(main())

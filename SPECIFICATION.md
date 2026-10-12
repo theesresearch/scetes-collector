@@ -1,7 +1,7 @@
 # SCETES Measurement Specification 1.0
 
 Status: draft for review · Version 1.0.0 · 6 October 2026
-Applies to: `sce_infer.py` and `sce_upload.py` 1.0.0 to 1.0.4 (see `SHA256SUMS`; 1.0.1 to 1.0.4 change no measurement, 1.0.2 adds the idle-share calculation in the upload tool).
+Applies to: `sce_infer.py` and `sce_upload.py` 1.0.0 to 1.0.5.dev0 (see `SHA256SUMS`; 1.0.1 to 1.0.5.dev0 change no measurement, 1.0.2 adds the idle-share calculation in the upload tool, 1.0.5.dev0 adds the optional upload offer at the end of a run).
 Licence of this document: to be confirmed by the owner (proposed: CC BY 4.0).
 
 This document states exactly what a SCETES measurement is, how each number is produced and where its limits are. It describes the released code; where the code and this text disagree, the code is authoritative and this text must be corrected.

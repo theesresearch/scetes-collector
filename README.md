@@ -41,6 +41,14 @@ Use a prompt you are allowed to process. It is passed on the local command line,
 
 Archive contents: `manifest.json`, `system.json`, `metrics.json`, `benchmark.csv`, `telemetry.csv` and `checksum.txt`.
 
+## End of a run: summary and optional web report (1.0.5.dev0, not released)
+
+After the archive is written, `sce_infer.py` prints a short summary (tokens per second, p95 batch latency, GPU energy per output token, throttling and the path of the local report). It then offers to send the summary numbers to SCETES for a private link to a web report: it lists every field that would be sent, links to https://scetes.com/en/privacy/ and asks `[y/N]` (default no). The fields are exactly those of `sce_upload.py` below.
+
+- Without a terminal (CI, pipes, notebooks without a TTY) nothing is ever sent, not even with `--upload`; send later with `sce_upload.py`.
+- `--upload` sends without the question (the field list is still shown); `--no-upload` skips the offer.
+- `--dry-run` prints exactly what would be sent and sends nothing.
+
 ## Optional upload (`sce_upload.py`)
 
 `sce_upload.py` reads one or more archives (one per configuration), verifies their checksums, prints exactly what would be sent and sends it only after you agree (`[y/N]`, default no). Use `--dry-run` to see the content without sending or being asked anything. Prompts, model outputs, the hostname and the GPU UUID are never read or sent. Prices and an e-mail address are optional; an e-mail needs its own consent, and a separate optional question asks whether anonymised, aggregated statistics may use the measurements (default no). `--delete LINK` removes a result you sent. Standard library only, no GPU needed. How SCETES handles the data: https://scetes.com/en/privacy/
