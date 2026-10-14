@@ -252,6 +252,73 @@ def after_run(archive_path, upload=None, dry_run=False, endpoint=None, stdin=Non
     return 0
 
 
+PROM_METRICS = {  # name: (type, help); units are in the names (Prometheus naming), values are medians over the repeats
+    "scetes_tokens_per_second": ("gauge", "Output tokens per second for the whole batch (median over repeats)."),
+    "scetes_energy_joules_per_output_token": ("gauge", "GPU energy per output token in joules (median over repeats)."),
+    "scetes_latency_seconds": ("summary", "Batch-level request latency in seconds; quantiles are reported only with enough repeats (p95 from 20, p99 from 100)."),
+    "scetes_throttle_loss_ratio": ("gauge", "Clock speed lost to throttling during the measured phases: 1 - mean SM clock / maximum SM clock."),
+    "scetes_gpu_idle_ratio": ("gauge", "Share of the measured time in which, according to the driver, no GPU kernel was running (1 - mean utilisation)."),
+    "scetes_gpu_memory_headroom_bytes": ("gauge", "GPU memory that stayed free at the peak of the run (total - peak used), in bytes."),
+}
+
+
+def _prom_label(value):
+    return str(value).replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+
+
+def _prom_number(value):
+    return repr(float(value)) if math.isfinite(float(value)) else ("+Inf" if value > 0 else "-Inf" if value < 0 else "NaN")
+
+
+def prometheus_text(archive_path):
+    """One collector archive -> Prometheus text exposition format 0.0.4 for the node_exporter textfile collector.
+
+    Labels: model, batch_size, precision, gpu_name, collector_version. Never the GPU UUID or the hostname."""
+    import sce_upload as up
+    arch = up.read_archive(str(archive_path))
+    mf, sysinfo, m = arch["manifest"], arch["system"], arch["metrics"]
+    labels = {"model": mf["model"], "batch_size": mf["parameters"]["batch_size"], "precision": mf.get("precision", "unknown"),
+              "gpu_name": sysinfo.get("gpu_name", "unknown"), "collector_version": mf.get("collector_version", VERSION)}
+    def series(extra=None):
+        pairs = list(labels.items()) + list((extra or {}).items())
+        return "{" + ",".join(f'{k}="{_prom_label(v)}"' for k, v in pairs) + "}"
+    values = {"scetes_tokens_per_second": [(None, m["throughput_tokens_s_median"])],
+              "scetes_energy_joules_per_output_token": [(None, m["j_per_output_token_median"])]}
+    latency = [(q, m.get(k)) for q, k in (("0.5", "request_latency_p50_s"), ("0.95", "request_latency_p95_s"), ("0.99", "request_latency_p99_s"))]
+    lat_rows = [up._num(r.get("request_latency_s")) for r in arch["benchmark"]]
+    lat_rows = [v for v in lat_rows if v is not None]
+    values["scetes_latency_seconds"] = [({"quantile": q}, v) for q, v in latency if v is not None]
+    throttling = up.throttling_detail(arch["telemetry"])
+    if throttling:
+        values["scetes_throttle_loss_ratio"] = [(None, round(max(0.0, 1 - throttling["mean_clock_pct_of_max"] / 100), 6))]
+    idle = up.idle_detail(arch["telemetry"])
+    if idle:
+        values["scetes_gpu_idle_ratio"] = [(None, round(idle["idle_time_pct"] / 100, 6))]
+    used = [v for v in (up._num(r.get("mem_used_mib")) for r in arch["telemetry"]) if v is not None]
+    total = [v for v in (up._num(r.get("mem_total_mib")) for r in arch["telemetry"]) if v is not None]
+    if used and total:
+        values["scetes_gpu_memory_headroom_bytes"] = [(None, max(0.0, max(total) - max(used)) * 1024 * 1024)]
+    lines = []
+    for name, (kind, text) in PROM_METRICS.items():
+        samples = values.get(name)
+        if not samples:
+            continue
+        lines += [f"# HELP {name} {text}", f"# TYPE {name} {kind}"]
+        lines += [f"{name}{series(extra)} {_prom_number(v)}" for extra, v in samples or []]
+        if kind == "summary" and lat_rows:
+            lines += [f"{name}_sum{series()} {_prom_number(sum(lat_rows))}", f"{name}_count{series()} {len(lat_rows)}"]
+    return "\n".join(lines) + "\n"
+
+
+def write_prometheus(archive_path, path):
+    """Write atomically (temporary file + rename), as the node_exporter textfile collector expects."""
+    path = Path(path)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(prometheus_text(archive_path), encoding="utf-8")
+    os.replace(tmp, path)
+    return path.resolve()
+
+
 def build_parser():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--model", required=True, help="Hugging Face model id or local path")
@@ -270,6 +337,8 @@ def build_parser():
     up_group.add_argument("--no-upload", dest="upload", action="store_false", help="after the run, do not offer the upload")
     ap.add_argument("--dry-run", action="store_true", help="after the run, print exactly what the upload would send; send nothing")
     ap.add_argument("--endpoint", default=None, help=argparse.SUPPRESS)
+    ap.add_argument("--export", choices=["prometheus"], help="also write the results as a Prometheus textfile (node_exporter textfile collector)")
+    ap.add_argument("--export-file", help="path of the textfile; default: the archive name with .prom")
     return ap
 
 
@@ -396,6 +465,8 @@ def main():
     shutil.rmtree(outdir, ignore_errors=True)
     print("Created", Path(a.output).resolve())
     print(json.dumps(metric, indent=2))
+    if a.export == "prometheus":
+        print("Prometheus textfile:", write_prometheus(a.output, a.export_file or str(Path(a.output).with_suffix(".prom"))))
     return after_run(a.output, upload=a.upload, dry_run=a.dry_run, endpoint=a.endpoint)
 
 if __name__ == "__main__": sys.exit(main())

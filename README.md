@@ -49,6 +49,23 @@ After the archive is written, `sce_infer.py` prints a short summary (tokens per 
 - `--upload` sends without the question (the field list is still shown); `--no-upload` skips the offer.
 - `--dry-run` prints exactly what would be sent and sends nothing.
 
+## Prometheus export (`--export prometheus`, 1.0.5.dev0, not released)
+
+`--export prometheus` also writes the results as a textfile in the Prometheus text format (version 0.0.4) for the node_exporter [textfile collector](https://github.com/prometheus/node_exporter#textfile-collector). The default path is the archive name with `.prom`; choose another with `--export-file`, for example a file in the directory given to `--collector.textfile.directory`. The file is written atomically (temporary file, then rename).
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `scetes_tokens_per_second` | gauge | output tokens per second for the whole batch (median) |
+| `scetes_energy_joules_per_output_token` | gauge | GPU energy per output token in joules (median) |
+| `scetes_latency_seconds{quantile="0.5\|0.95\|0.99"}` | summary | batch-level request latency; p95 from 20 repeats, p99 from 100 repeats; `_sum` and `_count` over the repeats |
+| `scetes_throttle_loss_ratio` | gauge | 1 - mean SM clock / maximum SM clock during the measured phases |
+| `scetes_gpu_idle_ratio` | gauge | share of the measured time with no GPU kernel running, according to the driver |
+| `scetes_gpu_memory_headroom_bytes` | gauge | GPU memory still free at the peak of the run |
+
+Labels: `model`, `batch_size`, `precision`, `gpu_name`, `collector_version`. The GPU UUID and the hostname are never exported.
+
+OpenTelemetry: the GenAI semantic conventions (for example `gen_ai.server.time_per_output_token`) and the hardware metric `hw.energy` are still in the "Development" stability status, so SCETES does not use those names yet. An OTLP export will follow once they are stable.
+
 ## Optional upload (`sce_upload.py`)
 
 `sce_upload.py` reads one or more archives (one per configuration), verifies their checksums, prints exactly what would be sent and sends it only after you agree (`[y/N]`, default no). Use `--dry-run` to see the content without sending or being asked anything. Prompts, model outputs, the hostname and the GPU UUID are never read or sent. Prices and an e-mail address are optional; an e-mail needs its own consent, and a separate optional question asks whether anonymised, aggregated statistics may use the measurements (default no). `--delete LINK` removes a result you sent. Standard library only, no GPU needed. How SCETES handles the data: https://scetes.com/en/privacy/
