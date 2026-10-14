@@ -1,0 +1,34 @@
+# Attaches a clean source ZIP (git archive: tracked files only, so no __pycache__ or .pyc) and its SHA-256
+# to a release. Runs when a release is published, or by hand for an existing tag (Actions > release-zip > Run workflow).
+name: release-zip
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag, for example v1.0.4"
+        required: true
+permissions:
+  contents: write
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: SHA256SUMS matches the scripts of this tag
+        run: sha256sum -c SHA256SUMS
+      - name: Build the ZIP from tracked files only
+        run: |
+          name="scetes-collector-${TAG#v}"
+          git archive --format=zip --prefix="$name/" -o "$name.zip" HEAD
+          if unzip -Z1 "$name.zip" | grep -E '(^|/)__pycache__/|\.py[co]$'; then echo "::error::compiled files in the ZIP"; exit 1; fi
+          sha256sum "$name.zip" > "$name.zip.sha256"
+          cat "$name.zip.sha256"
+      - name: Attach to the release
+        run: gh release upload "$TAG" scetes-collector-*.zip scetes-collector-*.zip.sha256 --clobber

@@ -1,0 +1,23 @@
+name: checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: SHA256SUMS matches the scripts
+        run: sha256sum -c SHA256SUMS
+      - name: No compiled Python files in the repository
+        run: |
+          if git ls-files | grep -E '(^|/)__pycache__/|\.py[co]$'; then
+            echo "::error::compiled Python files are tracked"; exit 1
+          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Unit tests (standard library only, no GPU)
+        run: python -m unittest discover -s tests -v
