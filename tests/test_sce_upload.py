@@ -217,7 +217,7 @@ class Release(unittest.TestCase):
         import re
         infer = open(os.path.join(self.ROOT, "sce_infer.py"), encoding="utf-8").read()
         self.assertEqual(re.search(r'^VERSION = "([^"]+)"', infer, re.M).group(1), up.TOOL_VERSION)
-        self.assertEqual(up.TOOL_VERSION, "1.0.4")
+        self.assertEqual(up.TOOL_VERSION, "1.0.5.dev0")
 
 
 class Cli(unittest.TestCase):

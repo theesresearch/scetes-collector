@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SCETES upload tool 1.0.4: send collector results to SCETES, only with your explicit consent.
+"""SCETES upload tool 1.0.5.dev0: send collector results to SCETES, only with your explicit consent.
 
 sce_infer.py measures and writes a local ZIP; it never uploads anything. This separate, optional tool reads one or more of
 those ZIP files, shows you EXACTLY what would be sent, and sends it only after you agree. Prompts, model outputs and your
@@ -17,7 +17,7 @@ import argparse, csv, hashlib, io, json, re, sys, zipfile
 from typing import Optional
 from urllib import error, parse, request
 
-TOOL_VERSION = "1.0.4"
+TOOL_VERSION = "1.0.5.dev0"
 SCHEMA_VERSION = 1
 CONSENT_VERSION = "2026-10-08"
 DEFAULT_ENDPOINT = "https://scetes.com/api/check"
